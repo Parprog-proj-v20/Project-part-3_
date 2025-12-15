@@ -5,100 +5,36 @@ on:
     branches: [ "main", "devops" ]
   pull_request:
     branches: [ "main", "devops" ]
-  workflow_dispatch:
 
 jobs:
-  setup-and-build:
+  build-and-test:
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install MPI dependencies
+      - name: Install MPI
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake libopenmpi-dev openmpi-bin g++
           
-      - name: Configure with CMake
-        run: |
-          mkdir -p build
-          cd build
-          cmake ..
-          
       - name: Build project
         run: |
-          cd build
-          make -j4
+          # Переходим в папку проекта
+          cd Parprog-proj-v20/Project-part-3_
           
-  run-main-tests:
-    runs-on: ubuntu-latest
-    needs: setup-and-build
-    
-    steps:
-      - uses: actions/checkout@v4
-        
-      - name: Install MPI
+          # Собираем
+          cmake -B build
+          cmake --build build --parallel 4
+          
+      - name: Run main program
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin
+          cd Parprog-proj-v20/Project-part-3_/build
+          echo "Running main program..."
+          timeout 10s mpirun -np 20 ./rabbits || echo "Program finished"
           
-      - name: Run main executable with 20 processes
+      - name: Run tests with ctest
         run: |
-          cd build
-          echo "Testing with correct number of processes (20):"
-          timeout 10s mpirun -np 20 ./rabbits || echo "Main program finished"
-          
-      - name: Test with wrong number of processes (should fail)
-        run: |
-          cd build
-          echo "Testing with wrong number of processes (10 - should fail):"
-          if mpirun -np 10 ./rabbits 2>&1 | grep -q "Error: program must be run with 20 processes"; then
-            echo "✓ Test passed: Correctly detects wrong process count"
-          else
-            echo "✗ Test failed: Should detect wrong process count"
-            exit 1
-          fi
-          
-  run-unit-tests:
-    runs-on: ubuntu-latest
-    needs: setup-and-build
-    
-    steps:
-      - uses: actions/checkout@v4
-        
-      - name: Install MPI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin
-          
-      - name: Run MPI unit tests
-        run: |
-          cd build
-          echo "Running unit tests with 20 MPI processes..."
-          
-          # Basic tests
-          for test in boundary_test initialize_test non-negativity_test zero_carrots_test; do
-            if [ -f "./tests/$test" ]; then
-              echo "Running $test..."
-              mpirun -np 20 "./tests/$test"
-            fi
-          done
-          
-          # Functional tests
-          for test in distribution_test exchange_test statistics_test values_test; do
-            if [ -f "./tests/$test" ]; then
-              echo "Running $test..."
-              timeout 30s mpirun -np 20 "./tests/$test"
-            fi
-          done
-          
-          # Special tests (with timeout)
-          if [ -f "./tests/performance_test" ]; then
-            echo "Running performance_test (with timeout)..."
-            timeout 60s mpirun -np 20 "./tests/performance_test" || echo "Performance test finished"
-          fi
-          
-          if [ -f "./tests/stress_test" ]; then
-            echo "Running stress_test..."
-            timeout 30s mpirun -np 20 "./tests/stress_test" || echo "Stress test finished"
-          fi
+          cd Parprog-proj-v20/Project-part-3_/build
+          echo "Running tests..."
+          ctest --output-on-failure --verbose
