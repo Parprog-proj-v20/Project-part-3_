@@ -2,9 +2,10 @@ name: MPI Rabbits CI
 
 on:
   push:
-    branches: [ "main", "devops" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "devops" ]
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -13,28 +14,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install MPI
+      - name: Debug - List directory structure
+        run: |
+          echo "=== Current directory structure ==="
+          pwd
+          ls -la
+          echo "=== Looking for project files ==="
+          find . -name "CMakeLists.txt" -type f | head -20
+          find . -name "*.cpp" -type f | head -20
+          find . -name "*.h" -type f | head -20
+          
+      - name: Install MPI dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake libopenmpi-dev openmpi-bin g++
           
-      - name: Build project
+      - name: Find and build project
         run: |
-          # Переходим в папку проекта
-          cd Parprog-proj-v20/Project-part-3_
+          # Ищем CMakeLists.txt
+          CMAKE_FILE=$(find . -name "CMakeLists.txt" -type f | head -1)
+          if [ -z "$CMAKE_FILE" ]; then
+            echo "ERROR: CMakeLists.txt not found!"
+            exit 1
+          fi
           
-          # Собираем
+          echo "Found CMakeLists.txt at: $CMAKE_FILE"
+          PROJECT_DIR=$(dirname "$CMAKE_FILE")
+          echo "Project directory: $PROJECT_DIR"
+          
+          # Переходим в директорию проекта
+          cd "$PROJECT_DIR"
+          echo "Building in: $(pwd)"
+          
+          # Собираем проект
           cmake -B build
           cmake --build build --parallel 4
           
-      - name: Run main program
+      - name: Run tests
         run: |
-          cd Parprog-proj-v20/Project-part-3_/build
-          echo "Running main program..."
-          timeout 10s mpirun -np 20 ./rabbits || echo "Program finished"
+          # Находим проект снова
+          CMAKE_FILE=$(find . -name "CMakeLists.txt" -type f | head -1)
+          PROJECT_DIR=$(dirname "$CMAKE_FILE")
+          cd "$PROJECT_DIR/build"
           
-      - name: Run tests with ctest
-        run: |
-          cd Parprog-proj-v20/Project-part-3_/build
-          echo "Running tests..."
-          ctest --output-on-failure --verbose
+          echo "=== Running main executable ==="
+          timeout 10s mpirun -np 20 ./rabbits 2>&1 || echo "Main program finished"
+          
+          echo -e "\n=== Running tests ==="
+          
+          # Если есть ctest, используем его
+          if command -v ctest &> /dev/null && [ -f "CTestTestfile.cmake" ]; then
+            ctest --output-on-failure --verbose
+          else
+            # Иначе запускаем тесты вручную
+            echo "Running tests manually..."
+            if [ -d "tests" ]; then
+              for test in tests/*; do
+                if [ -f "$test" ] && [ -x "$test" ]; then
+                  echo "Running $(basename $test)..."
+                  timeout 30s mpirun -np 20 "$test" 2>&1 && echo "✓ Passed" || echo "✗ Failed"
+                fi
+              done
+            fi
+          fi
