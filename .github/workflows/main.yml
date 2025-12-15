@@ -14,10 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+      
       - name: Install MPI dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libopenmpi-dev openmpi-bin
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            g++ \
+            libopenmpi-dev \
+            openmpi-bin
           
       - name: Build project
         run: |
@@ -25,46 +37,53 @@ jobs:
           cmake -B build
           cmake --build build --parallel 4
           
-      - name: Run main executable (with oversubscribe)
-        run: |
-          cd build
-          echo "=== Running main executable (20 processes) ==="
-          mpirun --oversubscribe -np 20 ./rabbits 2>&1 | tail -20 || echo "Program finished"
-          
-      - name: Run tests manually (with oversubscribe)
+      - name: Run unit tests
         run: |
           cd build
           echo "=== Running unit tests ==="
           
-          # Запускаем каждый тест с oversubscribe
-          for test_exec in tests/*; do
-            if [ -f "$test_exec" ] && [ -x "$test_exec" ]; then
-              test_name=$(basename "$test_exec")
-              echo "Running $test_name..."
-              
-              # Запускаем с таймаутом и oversubscribe
-              timeout 30s mpirun --oversubscribe -np 20 "$test_exec" 2>&1
-              
-              # Проверяем код возврата
-              if [ $? -eq 0 ]; then
-                echo "✓ $test_name passed"
-              elif [ $? -eq 124 ]; then
-                echo "⚠ $test_name timed out"
-              else
-                echo "✗ $test_name failed"
+          # Проверяем, собрались ли тесты
+          if [ -d "tests" ]; then
+            echo "Found test executables:"
+            ls -la tests/
+            
+            # Запускаем каждый тест с --oversubscribe
+            for test_exec in tests/*; do
+              if [ -f "$test_exec" ] && [ -x "$test_exec" ]; then
+                test_name=$(basename "$test_exec")
+                echo -e "\n=== Running $test_name ==="
+                
+                # Запускаем с таймаутом 30 секунд
+                timeout 30s mpirun --oversubscribe -np 20 "$test_exec" 2>&1
+                
+                # Анализируем результат
+                exit_code=$?
+                if [ $exit_code -eq 0 ]; then
+                  echo "$test_name PASSED"
+                elif [ $exit_code -eq 124 ]; then
+                  echo "$test_name TIMEOUT (30s)"
+                else
+                  echo "$test_name FAILED (exit code: $exit_code)"
+                fi
               fi
-            fi
-          done
+            done
+          else
+            echo "No tests directory found in build/"
+          fi
           
-      - name: Test wrong process count
+      - name: Run main executable
+        run: |
+          cd build
+          echo "=== Running main executable (20 processes) ==="
+          timeout 30s mpirun --oversubscribe -np 20 ./rabbits 2>&1 | tail -30 || echo "Program finished"
+          
+      - name: Test error handling
         run: |
           cd build
           echo "=== Testing error handling ==="
-          # Этот тест должен падать, и это нормально
           if mpirun --oversubscribe -np 10 ./rabbits 2>&1 | grep -q "Error: program must be run with 20 processes"; then
-            echo "✓ System correctly detects wrong process count"
-            exit 0  # Успех - мы ожидали ошибку
+            echo "System correctly detects wrong process count"
           else
-            echo "✗ Failed to detect wrong process count"
+            echo "Failed to detect wrong process count"
             exit 1
           fi
