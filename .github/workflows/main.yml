@@ -2,9 +2,9 @@ name: MPI Rabbits CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "devops" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "devops" ]
   workflow_dispatch:
 
 jobs:
