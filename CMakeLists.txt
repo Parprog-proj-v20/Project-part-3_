@@ -37,6 +37,7 @@ foreach(test ${TEST_SOURCES})
     add_test(
         NAME ${test}
         COMMAND ${MPIEXEC_EXECUTABLE}
+                --oversubscribe
                 ${MPIEXEC_NUMPROC_FLAG} 20
                 $<TARGET_FILE:${test}>
     )
@@ -45,6 +46,7 @@ endforeach()
 add_test(
     NAME system_test
     COMMAND ${MPIEXEC_EXECUTABLE}
+            --oversubscribe
             ${MPIEXEC_NUMPROC_FLAG} 10
             $<TARGET_FILE:rabbits>
 )
@@ -52,5 +54,6 @@ add_test(
 set_tests_properties(system_test
     PROPERTIES WILL_FAIL TRUE
 )
+
 
 
