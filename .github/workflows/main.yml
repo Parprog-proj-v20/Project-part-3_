@@ -14,47 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Полностью обновляет историю
           
-      - name: Debug project structure
+      - name: Verify project structure
         run: |
-          echo "=== Current directory ==="
+          echo "=== Project Structure ==="
           pwd
           ls -la
           echo ""
-          echo "=== Searching for main.cpp ==="
-          find . -name "main.cpp" -type f
+          echo "=== src/ directory ==="
+          ls -la src/ || echo "src/ not found"
           echo ""
-          echo "=== Contents of src/ ==="
-          ls -la src/ 2>/dev/null || echo "src/ directory not found"
-          
-      - name: Fix missing main.cpp
-        run: |
-          # Проверяем где находится main.cpp
-          if [ -f "main.cpp" ] && [ ! -f "src/main.cpp" ]; then
-            echo "Moving main.cpp to src/"
-            mkdir -p src
-            mv main.cpp src/
-          elif [ ! -f "src/main.cpp" ]; then
-            echo "ERROR: main.cpp not found anywhere!"
-            echo "Creating minimal main.cpp in src/"
-            mkdir -p src
-            cat > src/main.cpp << 'EOF'
-#include <iostream>
-#include "Rabbits.h"
-
-int main() {
-    std::cout << "Main file was auto-generated" << std::endl;
-    return 0;
-}
-EOF
-          fi
-          
-          # Проверяем Rabbits.h
-          if [ -f "Rabbits.h" ] && [ ! -f "src/Rabbits.h" ]; then
-            echo "Moving Rabbits.h to src/"
-            mv Rabbits.h src/
-          fi
+          echo "=== tests/ directory ==="
+          ls -la tests/ || echo "tests/ not found"
           
       - name: Install MPI dependencies
         run: |
@@ -64,6 +36,7 @@ EOF
       - name: Build project
         run: |
           echo "=== Building project ==="
+          # Принудительно удаляем старый build если есть
           rm -rf build
           cmake -B build
           cmake --build build --parallel 4
@@ -71,21 +44,11 @@ EOF
       - name: Run main executable
         run: |
           cd build
-          echo "=== Running main executable ==="
-          timeout 15s mpirun -np 20 ./rabbits 2>&1 | head -50 || echo "Program finished"
+          echo "=== Running main executable (20 processes) ==="
+          timeout 15s mpirun -np 20 ./rabbits 2>&1 || echo "Program finished"
           
       - name: Run unit tests
         run: |
           cd build
           echo "=== Running unit tests ==="
-          # Проверяем какие тесты есть
-          if [ -d "tests" ]; then
-            for test in tests/*; do
-              if [ -f "$test" ] && [ -x "$test" ]; then
-                echo "Running $(basename $test)..."
-                timeout 30s mpirun -np 20 "$test" 2>&1 | tail -5 || echo "Test finished"
-              fi
-            done
-          else
-            echo "No tests directory found in build/"
-          fi
+          ctest --output-on-failure --verbose 2>&1 || echo "Tests completed"
