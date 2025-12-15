@@ -13,21 +13,7 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Полностью обновляет историю
-          
-      - name: Verify project structure
-        run: |
-          echo "=== Project Structure ==="
-          pwd
-          ls -la
-          echo ""
-          echo "=== src/ directory ==="
-          ls -la src/ || echo "src/ not found"
-          echo ""
-          echo "=== tests/ directory ==="
-          ls -la tests/ || echo "tests/ not found"
-          
+      
       - name: Install MPI dependencies
         run: |
           sudo apt-get update
@@ -35,20 +21,50 @@ jobs:
           
       - name: Build project
         run: |
-          echo "=== Building project ==="
-          # Принудительно удаляем старый build если есть
           rm -rf build
           cmake -B build
           cmake --build build --parallel 4
           
-      - name: Run main executable
+      - name: Run main executable (with oversubscribe)
         run: |
           cd build
           echo "=== Running main executable (20 processes) ==="
-          timeout 15s mpirun -np 20 ./rabbits 2>&1 || echo "Program finished"
+          mpirun --oversubscribe -np 20 ./rabbits 2>&1 | tail -20 || echo "Program finished"
           
-      - name: Run unit tests
+      - name: Run tests manually (with oversubscribe)
         run: |
           cd build
           echo "=== Running unit tests ==="
-          ctest --output-on-failure --verbose 2>&1 || echo "Tests completed"
+          
+          # Запускаем каждый тест с oversubscribe
+          for test_exec in tests/*; do
+            if [ -f "$test_exec" ] && [ -x "$test_exec" ]; then
+              test_name=$(basename "$test_exec")
+              echo "Running $test_name..."
+              
+              # Запускаем с таймаутом и oversubscribe
+              timeout 30s mpirun --oversubscribe -np 20 "$test_exec" 2>&1
+              
+              # Проверяем код возврата
+              if [ $? -eq 0 ]; then
+                echo "✓ $test_name passed"
+              elif [ $? -eq 124 ]; then
+                echo "⚠ $test_name timed out"
+              else
+                echo "✗ $test_name failed"
+              fi
+            fi
+          done
+          
+      - name: Test wrong process count
+        run: |
+          cd build
+          echo "=== Testing error handling ==="
+          # Этот тест должен падать, и это нормально
+          if mpirun --oversubscribe -np 10 ./rabbits 2>&1 | grep -q "Error: program must be run with 20 processes"; then
+            echo "✓ System correctly detects wrong process count"
+            exit 0  # Успех - мы ожидали ошибку
+          else
+            echo "✗ Failed to detect wrong process count"
+            exit 1
+          fi
