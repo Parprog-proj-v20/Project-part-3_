@@ -30,13 +30,22 @@ set(TEST_SOURCES
     zero_carrots_test
 )
 
+# Создаем папку для тестов в build/
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
+
 foreach(test ${TEST_SOURCES})
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} rabbits_lib MPI::MPI_CXX)
+    
+    # ВАЖНО: Указываем куда компилировать исполняемый файл
+    set_target_properties(${test} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+    )
 
     add_test(
         NAME ${test}
         COMMAND ${MPIEXEC_EXECUTABLE}
+                --oversubscribe
                 ${MPIEXEC_NUMPROC_FLAG} 20
                 $<TARGET_FILE:${test}>
     )
@@ -45,6 +54,7 @@ endforeach()
 add_test(
     NAME system_test
     COMMAND ${MPIEXEC_EXECUTABLE}
+            --oversubscribe
             ${MPIEXEC_NUMPROC_FLAG} 10
             $<TARGET_FILE:rabbits>
 )
@@ -52,5 +62,3 @@ add_test(
 set_tests_properties(system_test
     PROPERTIES WILL_FAIL TRUE
 )
-
-
