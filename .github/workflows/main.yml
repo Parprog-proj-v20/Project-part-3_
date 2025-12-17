@@ -32,7 +32,7 @@ jobs:
       - name: Run unit tests (ignore convergence_test failure)
         run: |
           cd build
-          echo "=== Running unit tests ==="
+          echo "Running unit tests"
           
           # Счетчики
           PASSED=0
@@ -40,7 +40,7 @@ jobs:
           SKIPPED=0
           TOTAL=0
           
-          # Ищем тесты
+          # Поиск тестов
           TESTS=$(find ./tests -type f -executable -name "*_test" 2>/dev/null | sort)
           
           if [ -z "$TESTS" ]; then
@@ -54,16 +54,14 @@ jobs:
             echo "  $TOTAL. $test"
           done
           
-          echo -e "\n=== Running tests ==="
+          echo -e "\nRunning tests"
           for test_exec in $TESTS; do
             test_name=$(basename "$test_exec")
             echo -e "\n--- Running: $test_name ---"
             
-            # ВРЕМЕННО игнорируем ошибку convergence_test
             if [ "$test_name" = "convergence_test" ]; then
               echo "Note: convergence_test uses MPI_Abort - temporary allowing failure"
               
-              # Запускаем, но игнорируем код возврата
               timeout 60s mpirun --oversubscribe -np 20 "$test_exec" 2>&1 || true
               
               # Проверяем вывод теста
@@ -76,7 +74,6 @@ jobs:
                 PASSED=$((PASSED + 1))
               fi
             else
-              # Остальные тесты проверяем нормально
               timeout 60s mpirun --oversubscribe -np 20 "$test_exec" 2>&1
               exit_code=$?
               
@@ -93,7 +90,7 @@ jobs:
             fi
           done
           
-          echo -e "\n=== TEST SUMMARY ==="
+          echo -e "\nTEST SUMMARY"
           echo "Total tests: $TOTAL"
           echo "Passed: $PASSED"
           echo "Failed: $FAILED"
@@ -101,7 +98,6 @@ jobs:
             echo "Skipped/Allowed failures: $SKIPPED (convergence_test)"
           fi
           
-          # Workflow НЕ падает если failed только convergence_test
           if [ $FAILED -gt 0 ]; then
             echo "::warning::Some tests failed, but allowing PR creation"
             # Не выходим с ошибкой, чтобы разрешить PR
@@ -111,7 +107,7 @@ jobs:
         run: |
           cd build
           echo "=== Running main executable ==="
-          echo "Testing with 20 processes..."
+          echo "Testing with 20 processes"
           
           timeout 45s mpirun --oversubscribe -np 20 ./rabbits 2>&1 | \
             tail -40 || echo "Program finished"
@@ -119,7 +115,7 @@ jobs:
       - name: Test error handling
         run: |
           cd build
-          echo "=== Testing error handling ==="
+          echo "Testing error handling"
           echo "Testing with 10 processes (should fail with error)..."
           
           output=$(timeout 10s mpirun --oversubscribe -np 10 ./rabbits 2>&1 || true)
@@ -135,7 +131,7 @@ jobs:
       - name: Final summary
         if: always()
         run: |
-          echo "          CI PIPELINE COMPLETE          "
+          echo "CI PIPELINE COMPLETE"
           echo "Build: Successful"
           echo "Main program: Runs with 20 processes"
           echo "Error handling: Correctly validates process count"
