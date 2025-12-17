@@ -40,7 +40,7 @@ jobs:
           SKIPPED=0
           TOTAL=0
           
-          # Ищем тесты
+          # тесты
           TESTS=$(find ./tests -type f -executable -name "*_test" 2>/dev/null | sort)
           
           if [ -z "$TESTS" ]; then
@@ -59,14 +59,13 @@ jobs:
             test_name=$(basename "$test_exec")
             echo -e "\n--- Running: $test_name ---"
             
-            # ВРЕМЕННО игнорируем ошибку convergence_test
+            # Временно игнорируем ошибку convergence_test
             if [ "$test_name" = "convergence_test" ]; then
               echo "Note: convergence_test uses MPI_Abort - temporary allowing failure"
               
-              # Запускаем, но игнорируем код возврата
               timeout 60s mpirun --oversubscribe -np 20 "$test_exec" 2>&1 || true
               
-              # Проверяем вывод теста
+              # Проверка вывод теста
               output=$(timeout 60s mpirun --oversubscribe -np 20 "$test_exec" 2>&1 || true)
               if echo "$output" | grep -q "\[FAILED\]"; then
                 echo " convergence_test: Variance issue detected (known problem)"
@@ -76,7 +75,7 @@ jobs:
                 PASSED=$((PASSED + 1))
               fi
             else
-              # Остальные тесты проверяем нормально
+              # Остальные тесты
               timeout 60s mpirun --oversubscribe -np 20 "$test_exec" 2>&1
               exit_code=$?
               
@@ -101,10 +100,8 @@ jobs:
             echo "Skipped/Allowed failures: $SKIPPED (convergence_test)"
           fi
           
-          # Workflow НЕ падает если failed только convergence_test
           if [ $FAILED -gt 0 ]; then
             echo "::warning::Some tests failed, but allowing PR creation"
-            # Не выходим с ошибкой, чтобы разрешить PR
           fi
           
       - name: Run main executable
